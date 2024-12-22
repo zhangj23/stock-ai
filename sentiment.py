@@ -3,11 +3,29 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from pandas.tseries.offsets import BDay
 
 load_dotenv()
+analyzer = SentimentIntensityAnalyzer()
 
-def open_trade(date):
+def sentiment_analyzer(headline):
+   return analyzer.polarity_scores(headline)['compound']
    
+def open_trade(date):
+   datetime = pd.to_datetime(date)
+   today_open = pd.to_datetime(date).floor('d').replace(hour=9, minute=30) - pd.tseries.offsets.BDay(0)
+   today_close = pd.to_datetime(date).floor('d').replace(hour=16, minute=0) - pd.tseries.offsets.BDay(0)
+   
+   next_open= pd.to_datetime(date).floor('d').replace(hour=9, minute=30) + pd.tseries.offsets.BDay()
+   prev_close = pd.to_datetime(date).floor('d').replace(hour=16, minute=0) - pd.tseries.offsets.BDay()
+   
+   if today_open > datetime and prev_close <= datetime:
+      return today_open.date()
+   elif today_close < datetime and next_open > datetime:
+      return next_open.date()
+   else:
+      return datetime.date()
+
 def write_info(ticker):
    """Create API response and save in csv formatted for only publish time and title
    Args:
@@ -21,17 +39,21 @@ def write_info(ticker):
    api_key = os.getenv("API_KEY")
 
    parameters = {
-      'q': ticker, # query phrase
+      'q': ticker + " stock", # query phrase
       'sortBy': 'popularity', # articles from popular sources and publishers come first
       'pageSize': 100,  # maximum is 100 for developer version
       'apiKey': api_key, # your own API key
-      'language': 'en'
+      'language': 'en',
    }
 
    response = requests.get(url, params=parameters)
 
+   print(response)
+   
    data = pd.DataFrame(response.json())
 
+
+   
    news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1)
    print(news_df)
    final_news = news_df.loc[:,['publishedAt','title']]
@@ -66,8 +88,12 @@ def main():
    titles = read_info(ticker)
    print(titles)
    
-   analyzer = SentimentIntensityAnalyzer()
+   titles['trade_day'] = titles['publishedAt'].apply(open_trade)
+   print(titles)
    
-   titles['']
+   
+   titles['sentiment_score'] = titles['title'].apply(sentiment_analyzer)
+   print(titles)
+   titles.to_csv(f'csv/{ticker}_sentiment.csv', index=False)
 if __name__ == "__main__":
    main()
