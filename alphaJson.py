@@ -20,7 +20,7 @@ def main():
    json_object = json.dumps(data, indent=4)
  
 
-   with open(f"{symbol}.json", "w") as outfile:
+   with open(f"{symbol}earnings.json", "w") as outfile:
       outfile.write(json_object)
    outfile.close()
 if __name__ == "__main__":
