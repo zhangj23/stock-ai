@@ -24,7 +24,7 @@ class StockSentiment:
       self.data.to_csv(f'csv/{ticker}_sentiment.csv', index=False)
       
       self.scores = self.min_max_score(self.data)
-      
+      self.scores.set_index('Date', inplace=True)
    def combine_text(self, article):
       article['title'] += " " + (article["content"].split("\u2026 [", 1)[0] if article["content"] and "If you click 'Accept all'" not in article["content"] else "") + " " + (article["description"] if article["description"] else "")
       return article
@@ -113,7 +113,7 @@ class StockSentiment:
 
       data = pd.DataFrame(response.json())
       
-      news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(combine_text, axis=1)
+      news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
       final_news = news_df.loc[:,['publishedAt','title']]
       final_news['publishedAt'] = pd.to_datetime(final_news['publishedAt'])
       final_news.sort_values(by='publishedAt',inplace=True)
@@ -136,7 +136,6 @@ class StockSentiment:
          Panda DataFrame: DataFrame with DateTime and Headline Title
       """
       data  = pd.read_csv(f'csv/{ticker}.csv')
-      print(data)
       return data
 
 
@@ -144,5 +143,6 @@ def main():
    ticker = "INTC"
    sentiment_class = StockSentiment(ticker)
    print(sentiment_class.scores)
+   
 if __name__ == "__main__":
    main()
