@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import os
 
-seq_length = 10
+seq_length = 30
 
 def etl(ticker):
    stock_info = yfinance.Ticker(ticker)
@@ -37,31 +37,39 @@ def etl(ticker):
    close_data['Close'] = data['Close']
    prediction_scaler = MinMaxScaler()
    prediction_scaled_data = prediction_scaler.fit_transform(close_data)
-   print(prediction_scaled_data)
    
    scaler = MinMaxScaler()
    scaled_data = scaler.fit_transform(data)
 
-   print(scaled_data)
 
-   cap = int(len(scaled_data) * 1)
+   # cap = int(len(scaled_data) * 1)
+   # train_size = int(cap * 0.9)
+   # train_data = scaled_data[:train_size]
+   # test_data = scaled_data[train_size:cap]
+
+   # X_train, y_train = create_sequences(train_data, seq_length)
+   # X_test, y_test = create_sequences(test_data, seq_length)
+
+
+   X_scaled, y_scaled = create_sequences(scaled_data, seq_length)
+   
+   cap = int(len(X_scaled) * 1)
    train_size = int(cap * 0.9)
-   train_data = scaled_data[:train_size]
-   test_data = scaled_data[train_size+1:cap+1]
-
-   X_train, y_train = create_sequences(train_data, seq_length)
-   X_test, y_test = create_sequences(test_data, seq_length)
-
+   X_train = X_scaled[:train_size]
+   y_train = y_scaled[:train_size]
+   X_test = X_scaled[train_size:cap]
+   y_test = y_scaled[train_size:cap]
+   
    return X_train, y_train, X_test, y_test, prediction_scaler, data
 
 def create_model(X_train, y_train, ticker):
    model = Sequential([
         LSTM(50, activation='relu', input_shape=(seq_length,  X_train.shape[2]), return_sequences=True),
-        Dropout(0.2),
-        LSTM(70, activation='relu', return_sequences = True),
         Dropout(0.3),
-        LSTM(100, activation='relu'),
+        LSTM(70, activation='relu',return_sequences=True),
         Dropout(0.4),
+        LSTM(50, activation='relu'),
+        Dropout(0.5),
         Dense(1)
     ])
 
@@ -74,8 +82,10 @@ def predict_data(X_train, X_test, prediction_scaler, ticker):
    model = tf.keras.models.load_model(f"models/{ticker}_model.keras")
    # Make predictions
    train_predictions = model.predict(X_train)
+   print(X_test)
    test_predictions_scaled = model.predict(X_test)
 
+   print(train_predictions)
    # Inverse transform the predictions
    train_predictions = prediction_scaler.inverse_transform(train_predictions)
    test_predictions = prediction_scaler.inverse_transform(test_predictions_scaled)
@@ -109,15 +119,20 @@ def create_sequences(data, seq_length):
    return np.array(X), np.array(y)
 
 def display_accuracy(x, y, prediction):
+   good = 0
    for i in range(len(prediction)):
       x_value = x[i][-1][0]
       y_value = y[i]
       predicted_value = prediction[i][0]
       good_prediction = (x_value > y_value) == (x_value > predicted_value)
-      print(f"{x_value} {y_value} {predicted_value} {good_prediction}")
-   
+      if(good_prediction):
+         good += 1
+      
+   print("{0:.2f}%".format(good/len(prediction)*100))
+
+
 def main():
-   ticker = "AAPL"
+   ticker = "TSLA"
    X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
    if not os.path.exists(f"models/{ticker}_model.keras"):
       create_model(X_train, y_train, ticker)
