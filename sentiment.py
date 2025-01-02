@@ -57,7 +57,7 @@ class StockSentiment:
       dates = list(groups.groups.keys())
       sentiment_scores = {'Date': dates, 'Scores': []}
       for key in groups.groups.keys():
-         data = groups.get_group(key)
+         data = groups.get_group((key,))
          extreme_score = 0
          if data["sentiment_score"].max() > 0:
             extreme_score += data["sentiment_score"].max()
@@ -142,7 +142,7 @@ class StockSentiment:
 def main():
    ticker = "INTC"
    sentiment_class = StockSentiment(ticker)
-   print(sentiment_class.scores)
+   # print(sentiment_class.scores)
    
 if __name__ == "__main__":
    main()

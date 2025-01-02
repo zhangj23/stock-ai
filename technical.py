@@ -1,7 +1,7 @@
 import ta
 
 def create_ta(data):
-   print(data)
+   # print(data)
    data['SMA50'] = ta.trend.sma_indicator(data['Close'], window=50)
    data['EMA20'] = ta.trend.sma_indicator(data['Close'], window=20)
    
@@ -19,7 +19,7 @@ def create_ta(data):
    data['OBV'] = ta.volume.on_balance_volume(data['Close'], data['Volume'])
    
    data.dropna(inplace=True)
-   print(data)
+   # print(data)
    
    return data
 

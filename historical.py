@@ -6,80 +6,115 @@ from tensorflow import keras
 import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import os
+from tensorflow.keras.callbacks import EarlyStopping
+from top_100_tickers import top_100_stocks
 
-seq_length = 30
+seq_length = 5
 
 def etl(ticker):
-   stock_info = yfinance.Ticker(ticker)
-   history = stock_info.history(period="2y", interval="1d")
+   try:
+      print(ticker)
+      stock_info = yfinance.Ticker(ticker)
+      history = stock_info.history(period="2y", interval="1d")
 
-   data = history["Close"].to_frame()
-   data["High"] =  history["High"].to_frame()
-   data["Low"] = history["Low"].to_frame()
-   data["Volume"] = history["Volume"].to_frame()
-   data = create_ta(data)
+      data = history["Close"].to_frame()
+      data["High"] =  history["High"].to_frame()
+      data["Low"] = history["Low"].to_frame()
+      data["Volume"] = history["Volume"].to_frame()
+      data = create_ta(data)
 
-   data.drop("High", axis=1, inplace=True)
-   data.drop("Low", axis=1, inplace=True)
+      data.drop("High", axis=1, inplace=True)
+      data.drop("Low", axis=1, inplace=True)
 
-   data.index = data.index.date
+      data.index = data.index.date
 
-   sentiment_object = StockSentiment(ticker)
+      sentiment_object = StockSentiment(ticker)
 
-   data = data.join(sentiment_object.scores, how='left')
-   data['Scores'].fillna(0, inplace=True)
+      data = data.join(sentiment_object.scores, how='left')
+      
+      # Replace rows with no sentiment with 0
+      # data['Scores'].fillna(0, inplace=True)
+      
+      # Drop rows with empty sentiment
+      data.dropna(inplace=True)
+      close_data = pd.DataFrame()
+      close_data['Close'] = data['Close']
+      prediction_scaler = MinMaxScaler()
+      
+      if(ticker == "ABT"):
+         print(close_data)
+         
+      prediction_scaled_data = prediction_scaler.fit_transform(close_data)
+      
+      scaler = MinMaxScaler()
+      scaled_data = scaler.fit_transform(data)
 
-   close_data = pd.DataFrame()
-   close_data['Close'] = data['Close']
-   prediction_scaler = MinMaxScaler()
-   prediction_scaled_data = prediction_scaler.fit_transform(close_data)
-   
-   scaler = MinMaxScaler()
-   scaled_data = scaler.fit_transform(data)
+
+      # cap = int(len(scaled_data) * 1)
+      # train_size = int(cap * 0.9)
+      # train_data = scaled_data[:train_size]
+      # test_data = scaled_data[train_size:cap]
+
+      # X_train, y_train = create_sequences(train_data, seq_length)
+      # X_test, y_test = create_sequences(test_data, seq_length)
 
 
-   # cap = int(len(scaled_data) * 1)
-   # train_size = int(cap * 0.9)
-   # train_data = scaled_data[:train_size]
-   # test_data = scaled_data[train_size:cap]
-
-   # X_train, y_train = create_sequences(train_data, seq_length)
-   # X_test, y_test = create_sequences(test_data, seq_length)
-
-
-   X_scaled, y_scaled = create_sequences(scaled_data, seq_length)
-   
-   cap = int(len(X_scaled) * 1)
-   train_size = int(cap * 0.9)
-   X_train = X_scaled[:train_size]
-   y_train = y_scaled[:train_size]
-   X_test = X_scaled[train_size:cap]
-   y_test = y_scaled[train_size:cap]
-   
-   return X_train, y_train, X_test, y_test, prediction_scaler, data
-
+      X_scaled, y_scaled = create_sequences(scaled_data, seq_length)
+      
+      cap = int(len(X_scaled) * 1)
+      train_size = int(cap * 0.9)
+      X_train = X_scaled[:train_size]
+      y_train = y_scaled[:train_size]
+      X_test = X_scaled[train_size:cap]
+      y_test = y_scaled[train_size:cap]
+      
+      return X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled
+   except:
+      return
 def create_model(X_train, y_train, ticker):
+   # model = Sequential([
+   #      LSTM(50, activation='relu', input_shape=(seq_length,  X_train.shape[2]), return_sequences=True),
+   #      Dropout(0.3),
+   #      LSTM(70, activation='relu',return_sequences=True),
+   #      Dropout(0.4),
+   #      LSTM(50, activation='relu'),
+   #      Dropout(0.5),
+   #      Dense(1)
+   #  ])
+
    model = Sequential([
-        LSTM(50, activation='relu', input_shape=(seq_length,  X_train.shape[2]), return_sequences=True),
-        Dropout(0.3),
-        LSTM(70, activation='relu',return_sequences=True),
-        Dropout(0.4),
-        LSTM(50, activation='relu'),
-        Dropout(0.5),
-        Dense(1)
-    ])
+      Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(seq_length, X_train.shape[2])),
+      Dropout(0.3),
+      Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
+      Dropout(0.5),
+      Dense(1)
+   ])
+
 
    model.compile(optimizer='adam', loss='mse')
-   model.fit(X_train, y_train, epochs=100, batch_size=32, verbose=1)
+   early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+   model.fit(X_train, y_train, epochs=100, batch_size=16, verbose=1, callbacks=[early_stop])
 
-   model.save(f"models/{ticker}_model.keras")
+   model.save(f"models/{ticker}{seq_length}_model.keras")
    
 def predict_data(X_train, X_test, prediction_scaler, ticker):
-   model = tf.keras.models.load_model(f"models/{ticker}_model.keras")
+   """Predicts 2 different sets of data using a model and 
+   inverses it using the Scaler passed in
+
+   Args:
+       X_train (np array): Set 1 (training data)
+       X_test (np array): Set 2 (test data)
+       prediction_scaler (MinMaxScaler()): sk learn MinMax
+       ticker (string): Ticker of the model you want to use
+
+   Returns:
+       tuple: set 1 predictions, set 2 predictions, set 2 scaled predictions
+   """
+   model = tf.keras.models.load_model(f"models/{ticker}{seq_length}_model.keras")
    # Make predictions
    train_predictions = model.predict(X_train)
    print(X_test)
@@ -119,6 +154,13 @@ def create_sequences(data, seq_length):
    return np.array(X), np.array(y)
 
 def display_accuracy(x, y, prediction):
+   """Returns a percentage based on how accurate the predictor was on the stock going up or down
+
+   Args:
+       x (np array): Original X with all sequences
+       y (np array): Original y with correct returns
+       prediction (np array): Predicted y by model
+   """
    good = 0
    for i in range(len(prediction)):
       x_value = x[i][-1][0]
@@ -130,15 +172,54 @@ def display_accuracy(x, y, prediction):
       
    print("{0:.2f}%".format(good/len(prediction)*100))
 
+def compile_etl(ticker_list):
+   """Uses the etl function to combine a bunch of X and Y 
+   training and testing data to make a model based on more stocks
 
+   Args:
+       ticker_list (array): list of tickers to be used
+
+   Returns:
+       tuple: list of X_train and y_train lists that are already MinMaxed
+   """
+   X_train_list = []
+   y_train_list = []
+   
+   for ticker in ticker_list:
+      response = etl(ticker)
+      if response:
+         X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled = response
+      else:
+         continue
+      if X_train.size:
+         X_train_list.append(X_train)
+         y_train_list.append(y_train)
+      # X_test_list = np.concatenate((X_test_list, X_test))
+      # y_test_list = np.concatenate((y_test_list, y_test))
+   X_train_list = np.concatenate(X_train_list)
+   y_train_list = np.concatenate(y_train_list)
+   return X_train_list, y_train_list
 def main():
-   ticker = "TSLA"
-   X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
-   if not os.path.exists(f"models/{ticker}_model.keras"):
+   ticker = "all"
+   test_ticker = "NVDA"
+   # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
+   ticker_list = top_100_stocks
+   # X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
+   
+   X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled = etl(test_ticker)
+   if not os.path.exists(f"models/{ticker}{seq_length}_model.keras"):
+      X_train, y_train = compile_etl(ticker_list)
       create_model(X_train, y_train, ticker)
-   train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train, X_test, prediction_scaler, ticker)
+      
+   # Use this for a stock not in the ticker list
+   # train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_scaled, prediction_scaler, ticker)
+   # display_accuracy(X_scaled, y_scaled, test_predictions_scaled)
+   
+   # Use this for a stock in the ticker list
+   train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_test, prediction_scaler, ticker)
    display_accuracy(X_test, y_test, test_predictions_scaled)
-   plot_data(train_predictions, test_predictions, data, ticker)
+   
+   plot_data(train_predictions, test_predictions, data, test_ticker)
    
 if __name__ == "__main__":
    main()
