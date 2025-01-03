@@ -13,10 +13,11 @@ class StockSentiment:
       self.analyzer = SentimentIntensityAnalyzer()
       
       if os.path.exists(f"csv/{ticker}.csv"):
-         self.data = self.read_info(self.ticker)
+         self.data = self.read_info()
+         self.merge_new_data()
       else:
-         self.data = self.write_info(self.ticker)
-         
+         self.data = self.write_info()
+      
       self.data['trade_day'] = self.data['publishedAt'].apply(self.open_trade)
    
    
@@ -69,7 +70,36 @@ class StockSentiment:
          sentiment_scores["Scores"].append(score)
       return pd.DataFrame(sentiment_scores)
          
+   def merge_new_data(self):
+      self.data["publishedAt"] = pd.to_datetime(self.data["publishedAt"])
+      url = 'https://newsapi.org/v2/everything?'
 
+      api_key = os.getenv("API_KEY")
+
+      parameters = {
+         'q': self.ticker, # query phrase
+         'sortBy': 'popularity', # articles from popular sources and publishers come first
+         'pageSize': 100,  # maximum is 100 for developer version
+         'apiKey': api_key, # your own API key
+         'language': 'en',
+         # 'domains': 'yahoo.com,investors.com,businessinsider.com,marketwatch.com,bloomberg.com/'
+      }
+
+      response = requests.get(url, params=parameters)
+
+      data = pd.DataFrame(response.json())
+      
+      news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
+      final_news = news_df.loc[:,['publishedAt','title']]
+      final_news['publishedAt'] = pd.to_datetime(final_news['publishedAt'])
+      final_news.sort_values(by='publishedAt',inplace=True)
+      
+      self.data = pd.concat([self.data, final_news]).drop_duplicates().reset_index(drop=True)
+      print(self.data)
+      self.data.sort_values(by='publishedAt',inplace=True)
+      
+      self.data.to_csv(f"csv/{self.ticker}.csv", index=False)
+      
    def sentiment_analyzer(self, headline):
       return self.analyzer.polarity_scores(headline)['compound']
       
@@ -88,7 +118,7 @@ class StockSentiment:
       else:
          return datetime.date()
 
-   def write_info(self,ticker):
+   def write_info(self):
       """Create API response and save in csv formatted for only publish time and title
       Args:
          ticker (string): Stock Ticker
@@ -101,12 +131,12 @@ class StockSentiment:
       api_key = os.getenv("API_KEY")
 
       parameters = {
-         'q': ticker, # query phrase
+         'q': self.ticker, # query phrase
          'sortBy': 'popularity', # articles from popular sources and publishers come first
          'pageSize': 100,  # maximum is 100 for developer version
          'apiKey': api_key, # your own API key
          'language': 'en',
-         'domains': 'yahoo.com,investors.com,businessinsider.com,marketwatch.com,bloomberg.com/'
+         # 'domains': 'yahoo.com,investors.com,businessinsider.com,marketwatch.com,bloomberg.com/'
       }
 
       response = requests.get(url, params=parameters)
@@ -118,15 +148,15 @@ class StockSentiment:
       final_news['publishedAt'] = pd.to_datetime(final_news['publishedAt'])
       final_news.sort_values(by='publishedAt',inplace=True)
       
-      with open(f"json/{ticker}.json", "w") as outfile:
+      with open(f"json/{self.ticker}.json", "w") as outfile:
          outfile.write(data.to_json())
       outfile.close()
 
-      final_news.to_csv(f"csv/{ticker}.csv", index=False)
+      final_news.to_csv(f"csv/{self.ticker}.csv", index=False)
       return final_news
       
       
-   def read_info(self, ticker):
+   def read_info(self):
       """
       Read DataFrame from stored API response
       Args:
@@ -135,7 +165,7 @@ class StockSentiment:
       Returns:
          Panda DataFrame: DataFrame with DateTime and Headline Title
       """
-      data  = pd.read_csv(f'csv/{ticker}.csv')
+      data  = pd.read_csv(f'csv/{self.ticker}.csv')
       return data
 
 

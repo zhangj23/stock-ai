@@ -13,69 +13,82 @@ import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
 
-seq_length = 5
+seq_length = 7
 
 def etl(ticker):
-   try:
-      print(ticker)
-      stock_info = yfinance.Ticker(ticker)
-      history = stock_info.history(period="2y", interval="1d")
+   print(ticker)
+   stock_info = yfinance.Ticker(ticker)
+   history = stock_info.history(period="2y", interval="1d")
 
-      data = history["Close"].to_frame()
-      data["High"] =  history["High"].to_frame()
-      data["Low"] = history["Low"].to_frame()
-      data["Volume"] = history["Volume"].to_frame()
-      data = create_ta(data)
+   data = history["Close"].to_frame()
+   data["High"] =  history["High"].to_frame()
+   data["Low"] = history["Low"].to_frame()
+   data["Volume"] = history["Volume"].to_frame()
+   data = create_ta(data)
 
-      data.drop("High", axis=1, inplace=True)
-      data.drop("Low", axis=1, inplace=True)
+   data.drop("High", axis=1, inplace=True)
+   data.drop("Low", axis=1, inplace=True)
 
-      data.index = data.index.date
+   data.index = data.index.date
 
-      sentiment_object = StockSentiment(ticker)
+   sentiment_object = StockSentiment(ticker)
 
-      data = data.join(sentiment_object.scores, how='left')
+   data = data.join(sentiment_object.scores, how='left')
+   
+   # Replace rows with no sentiment with 0
+   # data['Scores'].fillna(0, inplace=True)
+   
+   # Drop rows with empty sentiment
+   # data.dropna(inplace=True) 
+   
+   sentiment_average = data['Scores'].mean()
+   first_sentiment_not_found = True
+   prev_score = 0
+   for index in data.index:
+      if pd.isna(data.at[index, 'Scores']) and first_sentiment_not_found:
+         data.at[index, 'Scores'] = sentiment_average
+      elif pd.isna(data.at[index, 'Scores']):
+         data.at[index, 'Scores'] = prev_score
+      else:
+         prev_score = data.at[index, 'Scores']
+         first_sentiment_not_found = False
+   close_data = pd.DataFrame()
+   close_data['Close'] = data['Close']
+   prediction_scaler = MinMaxScaler()
+   
+   if(ticker == "ABT"):
+      print(close_data)
       
-      # Replace rows with no sentiment with 0
-      # data['Scores'].fillna(0, inplace=True)
-      
-      # Drop rows with empty sentiment
-      data.dropna(inplace=True)
-      close_data = pd.DataFrame()
-      close_data['Close'] = data['Close']
-      prediction_scaler = MinMaxScaler()
-      
-      if(ticker == "ABT"):
-         print(close_data)
-         
-      prediction_scaled_data = prediction_scaler.fit_transform(close_data)
-      
-      scaler = MinMaxScaler()
-      scaled_data = scaler.fit_transform(data)
+   prediction_scaled_data = prediction_scaler.fit_transform(close_data)
+   
+   scaler = MinMaxScaler()
+   scaled_data = scaler.fit_transform(data)
 
 
-      # cap = int(len(scaled_data) * 1)
-      # train_size = int(cap * 0.9)
-      # train_data = scaled_data[:train_size]
-      # test_data = scaled_data[train_size:cap]
+   # cap = int(len(scaled_data) * 1)
+   # train_size = int(cap * 0.9)
+   # train_data = scaled_data[:train_size]
+   # test_data = scaled_data[train_size:cap]
 
-      # X_train, y_train = create_sequences(train_data, seq_length)
-      # X_test, y_test = create_sequences(test_data, seq_length)
+   # X_train, y_train = create_sequences(train_data, seq_length)
+   # X_test, y_test = create_sequences(test_data, seq_length)
 
 
-      X_scaled, y_scaled = create_sequences(scaled_data, seq_length)
-      
-      cap = int(len(X_scaled) * 1)
-      train_size = int(cap * 0.9)
-      X_train = X_scaled[:train_size]
-      y_train = y_scaled[:train_size]
-      X_test = X_scaled[train_size:cap]
-      y_test = y_scaled[train_size:cap]
-      
-      return X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled
-   except:
-      return
-def create_model(X_train, y_train, ticker):
+   X_scaled, y_scaled = create_sequences(scaled_data, seq_length)
+   
+   cap = int(len(X_scaled) * 1)
+   train_size = int(cap * 0.7)
+   validation_cap = int(cap * 0.9)
+   X_train = X_scaled[:train_size]
+   y_train = y_scaled[:train_size]
+   X_validate = X_scaled[train_size:validation_cap]
+   y_validate = y_scaled[train_size:validation_cap]
+   X_test = X_scaled[validation_cap:cap]
+   y_test = y_scaled[validation_cap:cap]
+   
+   return X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate, y_validate
+
+def create_model(X_train, y_train, X_validation, y_validation, ticker):
    # model = Sequential([
    #      LSTM(50, activation='relu', input_shape=(seq_length,  X_train.shape[2]), return_sequences=True),
    #      Dropout(0.3),
@@ -97,7 +110,7 @@ def create_model(X_train, y_train, ticker):
 
    model.compile(optimizer='adam', loss='mse')
    early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-   model.fit(X_train, y_train, epochs=100, batch_size=16, verbose=1, callbacks=[early_stop])
+   model.fit(X_train, y_train, epochs=100, batch_size=16, verbose=1, validation_data=(X_validation, y_validation), callbacks=[early_stop])
 
    model.save(f"models/{ticker}{seq_length}_model.keras")
    
@@ -184,32 +197,38 @@ def compile_etl(ticker_list):
    """
    X_train_list = []
    y_train_list = []
+   X_validate_list = []
+   y_validate_list = []
    
    for ticker in ticker_list:
       response = etl(ticker)
       if response:
-         X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled = response
+         X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate, y_validate = response
       else:
          continue
       if X_train.size:
          X_train_list.append(X_train)
          y_train_list.append(y_train)
+         X_validate_list.append(X_validate)
+         y_validate_list.append(y_validate)
       # X_test_list = np.concatenate((X_test_list, X_test))
       # y_test_list = np.concatenate((y_test_list, y_test))
    X_train_list = np.concatenate(X_train_list)
    y_train_list = np.concatenate(y_train_list)
-   return X_train_list, y_train_list
+   X_validate_list = np.concatenate(X_validate_list)
+   y_validate_list = np.concatenate(y_validate_list)
+   return X_train_list, y_train_list, X_validate_list, y_validate_list
 def main():
    ticker = "all"
-   test_ticker = "NVDA"
-   # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
-   ticker_list = top_100_stocks
+   test_ticker = "VZ"
+   ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
+   # ticker_list = top_100_stocks
    # X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
    
-   X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled = etl(test_ticker)
+   X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, _, _ = etl(test_ticker)
    if not os.path.exists(f"models/{ticker}{seq_length}_model.keras"):
-      X_train, y_train = compile_etl(ticker_list)
-      create_model(X_train, y_train, ticker)
+      X_train, y_train, X_validate, y_validate = compile_etl(ticker_list)
+      create_model(X_train, y_train, X_validate, y_validate, ticker)
       
    # Use this for a stock not in the ticker list
    # train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_scaled, prediction_scaler, ticker)
