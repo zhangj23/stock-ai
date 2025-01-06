@@ -13,9 +13,8 @@ import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
 
-seq_length = 10
 
-def etl(ticker):
+def etl(ticker, seq_length):
    print(ticker)
    stock_info = yfinance.Ticker(ticker)
    history = stock_info.history(period="2y", interval="1d")
@@ -58,9 +57,7 @@ def etl(ticker):
    close_data = pd.DataFrame()
    close_data['Close'] = data['Close']
    prediction_scaler = MinMaxScaler()
-   
-   if(ticker == "ABT"):
-      print(close_data)
+
       
    prediction_scaled_data = prediction_scaler.fit_transform(close_data)
    
@@ -91,7 +88,7 @@ def etl(ticker):
    
    return X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate, y_validate
 
-def create_model(X_train, y_train, X_validation, y_validation, ticker):
+def create_model(X_train, y_train, X_validation, y_validation, ticker, seq_length):
    # model = Sequential([
    #      LSTM(50, activation='relu', input_shape=(seq_length,  X_train.shape[2]), return_sequences=True),
    #      Dropout(0.3),
@@ -117,7 +114,7 @@ def create_model(X_train, y_train, X_validation, y_validation, ticker):
 
    model.save(f"models/{ticker}{seq_length}_model.keras")
    
-def predict_data(X_train, X_test, X_validate, prediction_scaler, ticker):
+def predict_data(X_train, X_test, X_validate, prediction_scaler, ticker, seq_length):
    """Predicts 2 different sets of data using a model and 
    inverses it using the Scaler passed in
 
@@ -134,10 +131,8 @@ def predict_data(X_train, X_test, X_validate, prediction_scaler, ticker):
    # Make predictions
    train_predictions = model.predict(X_train)
    validate_predictions = model.predict(X_validate)
-   print(X_test)
    test_predictions_scaled = model.predict(X_test)
 
-   print(train_predictions)
    # Inverse transform the predictions
    train_predictions = prediction_scaler.inverse_transform(train_predictions)
    validate_predictions = prediction_scaler.inverse_transform(validate_predictions)
@@ -145,7 +140,7 @@ def predict_data(X_train, X_test, X_validate, prediction_scaler, ticker):
    
    return train_predictions, test_predictions, test_predictions_scaled, validate_predictions
 
-def plot_data(train_predictions, test_predictions, validate_prediction, data, ticker):
+def plot_data(train_predictions, test_predictions, validate_prediction, data, ticker, seq_length):
    test_predictions = np.insert(test_predictions, 0, [validate_prediction[-1]], 0)
    plt.figure(figsize=(10, 6))
 
@@ -197,7 +192,7 @@ def display_accuracy(x, y, prediction):
 
    return percent
    
-def compile_etl(ticker_list):
+def compile_etl(ticker_list, seq_length):
    """Uses the etl function to combine a bunch of X and Y 
    training and testing data to make a model based on more stocks
 
@@ -213,7 +208,7 @@ def compile_etl(ticker_list):
    y_validate_list = []
    
    for ticker in ticker_list:
-      response = etl(ticker)
+      response = etl(ticker, seq_length)
       if response:
          X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate, y_validate = response
       else:
@@ -233,25 +228,25 @@ def compile_etl(ticker_list):
 
 def model_accuracy(model_name, seq_length, ticker_list):
    if not os.path.exists(f"models/{model_name}{seq_length}_model.keras"):
-      X_train, y_train, X_validate, y_validate = compile_etl(ticker_list)
-      create_model(X_train, y_train, X_validate, y_validate, model_name)
+      X_train, y_train, X_validate, y_validate = compile_etl(ticker_list, seq_length)
+      create_model(X_train, y_train, X_validate, y_validate, model_name, seq_length)
       
    total_amount = 0
    total_percent = 0
    for quote in ticker_list:
-      response = accuracy_per_quote(quote, model_name)
+      response = accuracy_per_quote(quote, model_name, seq_length)
       if response != None:
          total_percent += response
          total_amount += 1
    return total_percent/total_amount
-def accuracy_per_quote(quote, model_name):
-   response = etl(quote)
+def accuracy_per_quote(quote, model_name, seq_length):
+   response = etl(quote, seq_length)
 
    if response:
       X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate_test_ticker, _ = response
    else:
       return None
-   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name)
+   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name, seq_length)
    return display_accuracy(X_test, y_test, test_predictions_scaled)
 
 def determine_best_seq(model_name, ticker_list):
@@ -266,7 +261,9 @@ def determine_best_seq(model_name, ticker_list):
 
 def main():
    model_name = "all"
-   test_ticker = "NVDA"
+   test_ticker = "TSLA"
+   seq_length = 10
+   
    # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
    ticker_list = top_100_stocks
    # X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
@@ -284,7 +281,8 @@ def main():
    train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name)
    display_accuracy(X_test, y_test, test_predictions_scaled)
    
-   plot_data(train_predictions, test_predictions, validate_predictions, data, test_ticker)
+   plot_data(train_predictions, test_predictions, validate_predictions, data, test_ticker, seq_length)
+   
    
 if __name__ == "__main__":
    main()
