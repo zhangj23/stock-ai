@@ -13,7 +13,7 @@ import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
 
-seq_length = 7
+seq_length = 20
 
 def etl(ticker):
    print(ticker)
@@ -33,6 +33,9 @@ def etl(ticker):
 
    sentiment_object = StockSentiment(ticker)
 
+   if sentiment_object.scores.empty:
+      print("ok")
+      return None
    data = data.join(sentiment_object.scores, how='left')
    
    # Replace rows with no sentiment with 0
@@ -114,7 +117,7 @@ def create_model(X_train, y_train, X_validation, y_validation, ticker):
 
    model.save(f"models/{ticker}{seq_length}_model.keras")
    
-def predict_data(X_train, X_test, prediction_scaler, ticker):
+def predict_data(X_train, X_test, X_validate, prediction_scaler, ticker):
    """Predicts 2 different sets of data using a model and 
    inverses it using the Scaler passed in
 
@@ -130,18 +133,20 @@ def predict_data(X_train, X_test, prediction_scaler, ticker):
    model = tf.keras.models.load_model(f"models/{ticker}{seq_length}_model.keras")
    # Make predictions
    train_predictions = model.predict(X_train)
+   validate_predictions = model.predict(X_validate)
    print(X_test)
    test_predictions_scaled = model.predict(X_test)
 
    print(train_predictions)
    # Inverse transform the predictions
    train_predictions = prediction_scaler.inverse_transform(train_predictions)
+   validate_predictions = prediction_scaler.inverse_transform(validate_predictions)
    test_predictions = prediction_scaler.inverse_transform(test_predictions_scaled)
    
-   return train_predictions, test_predictions, test_predictions_scaled
+   return train_predictions, test_predictions, test_predictions_scaled, validate_predictions
 
-def plot_data(train_predictions, test_predictions, data, ticker):
-   test_predictions = np.insert(test_predictions, 0, [train_predictions[-1]], 0)
+def plot_data(train_predictions, test_predictions, validate_prediction, data, ticker):
+   test_predictions = np.insert(test_predictions, 0, [validate_prediction[-1]], 0)
    plt.figure(figsize=(10, 6))
 
    # Plot actual data
@@ -150,9 +155,13 @@ def plot_data(train_predictions, test_predictions, data, ticker):
    # Plot training predictions
    plt.plot(data.index[seq_length:seq_length+len(train_predictions)], train_predictions, label='Train Predictions',color='green')
 
+   test_pred_index = range(seq_length+len(train_predictions) -1, seq_length+len(train_predictions)+len(validate_prediction)-1)
+   plt.plot(data.index[test_pred_index], validate_prediction, label='Validate Predictions',color='black')
+   
    # Plot testing predictions
-   test_pred_index = range(seq_length+len(train_predictions)-1, seq_length+len(train_predictions)+len(test_predictions)-1)
+   test_pred_index = range(seq_length+len(train_predictions)+ len(validate_prediction)-1, seq_length+len(train_predictions)+len(test_predictions)+ len(validate_prediction)-1)
    plt.plot(data.index[test_pred_index], test_predictions, label='Test Predictions',color='orange')
+
 
    plt.title('Money')
    plt.xlabel('Year')
@@ -220,12 +229,12 @@ def compile_etl(ticker_list):
    return X_train_list, y_train_list, X_validate_list, y_validate_list
 def main():
    ticker = "all"
-   test_ticker = "VZ"
-   ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
-   # ticker_list = top_100_stocks
+   test_ticker = "NVDA"
+   # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
+   ticker_list = top_100_stocks
    # X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
    
-   X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, _, _ = etl(test_ticker)
+   X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate_test_ticker, _ = etl(test_ticker)
    if not os.path.exists(f"models/{ticker}{seq_length}_model.keras"):
       X_train, y_train, X_validate, y_validate = compile_etl(ticker_list)
       create_model(X_train, y_train, X_validate, y_validate, ticker)
@@ -235,10 +244,10 @@ def main():
    # display_accuracy(X_scaled, y_scaled, test_predictions_scaled)
    
    # Use this for a stock in the ticker list
-   train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_test, prediction_scaler, ticker)
+   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, ticker)
    display_accuracy(X_test, y_test, test_predictions_scaled)
    
-   plot_data(train_predictions, test_predictions, data, test_ticker)
+   plot_data(train_predictions, test_predictions, validate_predictions, data, test_ticker)
    
 if __name__ == "__main__":
    main()

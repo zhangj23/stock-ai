@@ -3,23 +3,28 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from pandas.tseries.offsets import BDay
 import os
+from datetime import date
 load_dotenv()
+
 
 class StockSentiment:
    def __init__(self, ticker):
+      today = date.today()
       self.ticker = ticker
       self.analyzer = SentimentIntensityAnalyzer()
       
       if os.path.exists(f"csv/{ticker}.csv"):
          self.data = self.read_info()
-         self.merge_new_data()
+         if pd.Timestamp(self.data.tail(1)["publishedAt"].values[0]).tz_localize(None) < pd.to_datetime(today).tz_localize(None) - pd.tseries.offsets.BDay(1):
+            self.merge_new_data()
       else:
          self.data = self.write_info()
       
+      if self.data.empty:
+         self.scores = pd.DataFrame()
+         return
       self.data['trade_day'] = self.data['publishedAt'].apply(self.open_trade)
-   
    
       self.data['sentiment_score'] = self.data['title'].apply(self.sentiment_analyzer)
       self.data.to_csv(f'csv/{ticker}_sentiment.csv', index=False)
@@ -27,7 +32,7 @@ class StockSentiment:
       self.scores = self.min_max_score(self.data)
       self.scores.set_index('Date', inplace=True)
    def combine_text(self, article):
-      article['title'] += " " + (article["content"].split("\u2026 [", 1)[0] if article["content"] and "If you click 'Accept all'" not in article["content"] else "") + " " + (article["description"] if article["description"] else "")
+      article['title'] += " " + (article["content"].split("\u2026 [", 1)[0].split("<li>", 1)[0] if article["content"] and "If you click 'Accept all'" not in article["content"] else "") + " " + (article["description"] if article["description"] else "")
       return article
 
    def calc_score(self, scores):
@@ -136,7 +141,7 @@ class StockSentiment:
          'pageSize': 100,  # maximum is 100 for developer version
          'apiKey': api_key, # your own API key
          'language': 'en',
-         # 'domains': 'yahoo.com,investors.com,businessinsider.com,marketwatch.com,bloomberg.com/'
+         'domains': 'yahoo.com,investors.com,businessinsider.com,marketwatch.com,bloomberg.com/'
       }
 
       response = requests.get(url, params=parameters)
@@ -144,7 +149,10 @@ class StockSentiment:
       data = pd.DataFrame(response.json())
       
       news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
-      final_news = news_df.loc[:,['publishedAt','title']]
+      try:
+         final_news = news_df.loc[:,['publishedAt','title']]
+      except KeyError:
+         return pd.DataFrame()
       final_news['publishedAt'] = pd.to_datetime(final_news['publishedAt'])
       final_news.sort_values(by='publishedAt',inplace=True)
       
