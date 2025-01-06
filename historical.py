@@ -13,7 +13,7 @@ import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
 
-seq_length = 20
+seq_length = 10
 
 def etl(ticker):
    print(ticker)
@@ -192,8 +192,11 @@ def display_accuracy(x, y, prediction):
       if(good_prediction):
          good += 1
       
-   print("{0:.2f}%".format(good/len(prediction)*100))
+   percent = good/len(prediction)*100
+   print("{0:.2f}%".format(percent))
 
+   return percent
+   
 def compile_etl(ticker_list):
    """Uses the etl function to combine a bunch of X and Y 
    training and testing data to make a model based on more stocks
@@ -227,24 +230,58 @@ def compile_etl(ticker_list):
    X_validate_list = np.concatenate(X_validate_list)
    y_validate_list = np.concatenate(y_validate_list)
    return X_train_list, y_train_list, X_validate_list, y_validate_list
+
+def model_accuracy(model_name, seq_length, ticker_list):
+   if not os.path.exists(f"models/{model_name}{seq_length}_model.keras"):
+      X_train, y_train, X_validate, y_validate = compile_etl(ticker_list)
+      create_model(X_train, y_train, X_validate, y_validate, model_name)
+      
+   total_amount = 0
+   total_percent = 0
+   for quote in ticker_list:
+      response = accuracy_per_quote(quote, model_name)
+      if response != None:
+         total_percent += response
+         total_amount += 1
+   return total_percent/total_amount
+def accuracy_per_quote(quote, model_name):
+   response = etl(quote)
+
+   if response:
+      X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate_test_ticker, _ = response
+   else:
+      return None
+   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name)
+   return display_accuracy(X_test, y_test, test_predictions_scaled)
+
+def determine_best_seq(model_name, ticker_list):
+   max_percent = 0
+   best_seq = 0
+   for i in range(3, 61, 5):
+      model_percent = model_accuracy(model_name, i, ticker_list)
+      if model_percent > max_percent:
+         best_seq = i
+         
+   return "Best seq_length: {}\n The average percent: {}%".format(best_seq, max_percent)
+
 def main():
-   ticker = "all"
+   model_name = "all"
    test_ticker = "NVDA"
    # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
    ticker_list = top_100_stocks
    # X_train, y_train, X_test, y_test, prediction_scaler, data = etl(ticker)
    
    X_train_sample, _, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate_test_ticker, _ = etl(test_ticker)
-   if not os.path.exists(f"models/{ticker}{seq_length}_model.keras"):
+   if not os.path.exists(f"models/{model_name}{seq_length}_model.keras"):
       X_train, y_train, X_validate, y_validate = compile_etl(ticker_list)
-      create_model(X_train, y_train, X_validate, y_validate, ticker)
+      create_model(X_train, y_train, X_validate, y_validate, model_name)
       
    # Use this for a stock not in the ticker list
    # train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_scaled, prediction_scaler, ticker)
    # display_accuracy(X_scaled, y_scaled, test_predictions_scaled)
    
    # Use this for a stock in the ticker list
-   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, ticker)
+   train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name)
    display_accuracy(X_test, y_test, test_predictions_scaled)
    
    plot_data(train_predictions, test_predictions, validate_predictions, data, test_ticker)
