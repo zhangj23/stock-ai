@@ -13,6 +13,7 @@ import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
 import json
+from tensorflow.keras.optimizers import Adam
 
 
 def etl(ticker, seq_length):
@@ -38,11 +39,14 @@ def etl(ticker, seq_length):
       return None
    data = data.join(sentiment_object.scores, how='left')
    
+   
+   data.ffill(inplace=True)
+   data.bfill(inplace=True)
    # Replace rows with no sentiment with 0
    # data['Scores'].fillna(0, inplace=True)
    
    # Drop rows with empty sentiment
-   data.dropna(inplace=True) 
+   # data.dropna(inplace=True) 
    
    # Uses previous sentiment, if no previous, then use the mean
    # sentiment_average = data['Scores'].mean()
@@ -57,7 +61,7 @@ def etl(ticker, seq_length):
    #       prev_score = data.at[index, 'Scores']
    #       first_sentiment_not_found = False
    
-   
+
    close_data = pd.DataFrame()
    close_data['Close'] = data['Close']
    prediction_scaler = MinMaxScaler()
@@ -89,7 +93,6 @@ def etl(ticker, seq_length):
    y_validate = y_scaled[train_size:validation_cap]
    X_test = X_scaled[validation_cap:cap]
    y_test = y_scaled[validation_cap:cap]
-   
    return X_train, y_train, X_test, y_test, prediction_scaler, data, X_scaled, y_scaled, X_validate, y_validate
 
 def create_model(X_train, y_train, X_validation, y_validation, ticker, seq_length):
@@ -103,18 +106,29 @@ def create_model(X_train, y_train, X_validation, y_validation, ticker, seq_lengt
    #      Dense(1)
    #  ])
 
+   # model = Sequential([
+   #    Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(seq_length, X_train.shape[2])),
+   #    Dropout(0.3),
+   #    Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
+   #    Dropout(0.5),
+   #    Dense(1)
+   # ])
+
+
    model = Sequential([
-      Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(seq_length, X_train.shape[2])),
+      LSTM(64, activation='tanh', input_shape=(seq_length, X_train.shape[2]), return_sequences=True),
       Dropout(0.3),
-      Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
-      Dropout(0.5),
-      Dense(1)
+      LSTM(128, activation='tanh', return_sequences=False),
+      Dropout(0.3),
+      Dense(32, activation='tanh'),
+      Dense(1)  # Output layer for regression
    ])
 
-
-   model.compile(optimizer='adam', loss='mse')
+   optimizer = Adam(learning_rate=0.001)
+   model.compile(optimizer=optimizer, loss='mse')
+   
    early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-   model.fit(X_train, y_train, epochs=100, batch_size=16, verbose=1, validation_data=(X_validation, y_validation), callbacks=[early_stop])
+   model.fit(X_train, y_train, epochs=100, batch_size=32, verbose=1, validation_data=(X_validation, y_validation), callbacks=[early_stop])
 
    model.save(f"models/{ticker}{seq_length}_model.keras")
    
@@ -258,8 +272,8 @@ def determine_best_seq(model_name, ticker_list):
    max_percent = 0
    best_seq = 0
    dictionary = {}
-   
-   for i in range(3, 61, 5):
+   seq_lengths = [5, 10, 30, 60, 90]
+   for i in seq_lengths:
       model_percent = model_accuracy(model_name, i, ticker_list)
       dictionary[i] = model_percent
       print("Accuracy for seq_length {}: {}".format(i, model_percent))
@@ -273,7 +287,7 @@ def determine_best_seq(model_name, ticker_list):
    return "Best seq_length: {}\n The average percent: {}%".format(best_seq, max_percent)
 
 def main():
-   model_name = "all"
+   model_name = "drop"
    test_ticker = "TSLA"
    seq_length = 10
    

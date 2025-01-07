@@ -30,6 +30,7 @@ class StockSentiment:
       self.data.to_csv(f'csv/{ticker}_sentiment.csv', index=False)
       
       self.scores = self.min_max_score(self.data)
+      
       self.scores.set_index('Date', inplace=True)
    def combine_text(self, article):
       article['title'] += " " + (article["content"].split("\u2026 [", 1)[0].split("<li>", 1)[0] if article["content"] and "If you click 'Accept all'" not in article["content"] else "") + " " + (article["description"] if article["description"] else "")
@@ -73,7 +74,10 @@ class StockSentiment:
          average_score = self.calc_score(data)
          score = average_score * 0.7 + extreme_score * 0.3
          sentiment_scores["Scores"].append(score)
-      return pd.DataFrame(sentiment_scores)
+      df = pd.DataFrame(sentiment_scores)
+      print("ok")
+      df.to_csv(f"final_csv/{self.ticker}_final.csv", index=False)
+      return df
          
    def merge_new_data(self):
       self.data["publishedAt"] = pd.to_datetime(self.data["publishedAt"])
@@ -92,7 +96,7 @@ class StockSentiment:
 
       response = requests.get(url, params=parameters)
 
-      data = pd.DataFrame(response.json(), index=[0])
+      data = pd.DataFrame(response.json())
       
       try:
          news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
