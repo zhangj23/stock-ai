@@ -12,6 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 from tensorflow.keras.callbacks import EarlyStopping
 from top_100_tickers import top_100_stocks
+import json
 
 
 def etl(ticker, seq_length):
@@ -41,19 +42,22 @@ def etl(ticker, seq_length):
    # data['Scores'].fillna(0, inplace=True)
    
    # Drop rows with empty sentiment
-   # data.dropna(inplace=True) 
+   data.dropna(inplace=True) 
    
-   sentiment_average = data['Scores'].mean()
-   first_sentiment_not_found = True
-   prev_score = 0
-   for index in data.index:
-      if pd.isna(data.at[index, 'Scores']) and first_sentiment_not_found:
-         data.at[index, 'Scores'] = sentiment_average
-      elif pd.isna(data.at[index, 'Scores']):
-         data.at[index, 'Scores'] = prev_score
-      else:
-         prev_score = data.at[index, 'Scores']
-         first_sentiment_not_found = False
+   # Uses previous sentiment, if no previous, then use the mean
+   # sentiment_average = data['Scores'].mean()
+   # first_sentiment_not_found = True
+   # prev_score = 0
+   # for index in data.index:
+   #    if pd.isna(data.at[index, 'Scores']) and first_sentiment_not_found:
+   #       data.at[index, 'Scores'] = sentiment_average
+   #    elif pd.isna(data.at[index, 'Scores']):
+   #       data.at[index, 'Scores'] = prev_score
+   #    else:
+   #       prev_score = data.at[index, 'Scores']
+   #       first_sentiment_not_found = False
+   
+   
    close_data = pd.DataFrame()
    close_data['Close'] = data['Close']
    prediction_scaler = MinMaxScaler()
@@ -238,7 +242,8 @@ def model_accuracy(model_name, seq_length, ticker_list):
       if response != None:
          total_percent += response
          total_amount += 1
-   return total_percent/total_amount
+   return total_percent / total_amount
+
 def accuracy_per_quote(quote, model_name, seq_length):
    response = etl(quote, seq_length)
 
@@ -252,10 +257,18 @@ def accuracy_per_quote(quote, model_name, seq_length):
 def determine_best_seq(model_name, ticker_list):
    max_percent = 0
    best_seq = 0
+   dictionary = {}
+   
    for i in range(3, 61, 5):
       model_percent = model_accuracy(model_name, i, ticker_list)
+      dictionary[i] = model_percent
+      print("Accuracy for seq_length {}: {}".format(i, model_percent))
       if model_percent > max_percent:
          best_seq = i
+         max_percent = model_percent
+      with open('my_dict.json', 'w') as f:
+         json.dump(dictionary, f)
+      
          
    return "Best seq_length: {}\n The average percent: {}%".format(best_seq, max_percent)
 

@@ -92,10 +92,13 @@ class StockSentiment:
 
       response = requests.get(url, params=parameters)
 
-      data = pd.DataFrame(response.json())
+      data = pd.DataFrame(response.json(), index=[0])
       
-      news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
-      final_news = news_df.loc[:,['publishedAt','title']]
+      try:
+         news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
+         final_news = news_df.loc[:,['publishedAt','title']]
+      except KeyError:
+         return pd.DataFrame()
       final_news['publishedAt'] = pd.to_datetime(final_news['publishedAt'])
       final_news.sort_values(by='publishedAt',inplace=True)
       
@@ -146,10 +149,11 @@ class StockSentiment:
 
       response = requests.get(url, params=parameters)
 
-      data = pd.DataFrame(response.json())
+      data = pd.DataFrame(response.json(), index=[0])
       
-      news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
+      
       try:
+         news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
          final_news = news_df.loc[:,['publishedAt','title']]
       except KeyError:
          return pd.DataFrame()
