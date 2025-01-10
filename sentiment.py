@@ -16,9 +16,11 @@ class StockSentiment:
       
       if os.path.exists(f"csv/{ticker}.csv"):
          self.data = self.read_info()
-         if pd.Timestamp(self.data.tail(1)["publishedAt"].values[0]).tz_localize(None) < pd.to_datetime(today).tz_localize(None) - pd.tseries.offsets.BDay(1):
-            self.merge_new_data()
+         # if pd.Timestamp(self.data.tail(1)["publishedAt"].values[0]).tz_localize(None) < pd.to_datetime(today).tz_localize(None) - pd.tseries.offsets.BDay(1):
+         #    self.merge_new_data()
       else:
+         self.scores = pd.DataFrame()
+         return
          self.data = self.write_info()
       
       if self.data.empty:
@@ -95,8 +97,16 @@ class StockSentiment:
       }
 
       response = requests.get(url, params=parameters)
-
-      data = pd.DataFrame(response.json())
+      data = pd.DataFrame()
+      if response.status_code == 200:
+         articles = response.json().get('articles', [])
+         if articles:  # Check if articles are present
+            data = pd.DataFrame(response.json())
+            print(data.head())  # Display the DataFrame
+         else:
+            print("No articles found.")
+      else:
+         print(f"Error: {response.status_code}, {response.text}")
       
       try:
          news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
@@ -153,8 +163,7 @@ class StockSentiment:
 
       response = requests.get(url, params=parameters)
 
-      data = pd.DataFrame(response.json(), index=[0])
-      
+      data = pd.DataFrame(response.json())
       
       try:
          news_df = pd.concat([data['articles'].apply(pd.Series)], axis=1).apply(self.combine_text, axis=1)
