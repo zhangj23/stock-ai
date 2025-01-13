@@ -48,8 +48,8 @@ class StockETL():
       
       # Create data and store in class
       cap = int(len(self.data))
-      train_size = int(cap * 0.7)
-      validation_cap = int(cap * 0.9)
+      train_size = int(cap * 0.75)
+      validation_cap = int(cap * 0.95)
       
       self.train_data = self.data.iloc[:train_size]
       self.validate_data = self.data.iloc[train_size:validation_cap]
@@ -209,6 +209,11 @@ class ModelTesting():
          y (np array): Original y with correct returns
          prediction (np array): Predicted y by model
       """
+      display_table = pd.DataFrame()
+      display_table["Prev"] = [i[-1][0] for i in x]
+      display_table["Actual"] = y
+      display_table["Prev"] = x
+      print(display_table)
       good = 0
       for i in range(len(prediction)):
          x_value = x[i][-1][0]
