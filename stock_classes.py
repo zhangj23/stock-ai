@@ -141,26 +141,35 @@ class StockModel(StockETL):
       #      Dense(1)
       #  ])
 
-      model = Sequential([
-         Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(self.seq_length, X_train.shape[2])),
-         Dropout(0.3),
-         Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
-         Dropout(0.5),
-         Dense(1)
-      ])
+      # model = Sequential([
+      #    Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(self.seq_length, X_train.shape[2])),
+      #    Dropout(0.3),
+      #    Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
+      #    Dropout(0.5),
+      #    Dense(1)
+      # ])
 
 
-      # model = Sequential()
+      # model = Sequential([
+      #    Bidirectional(LSTM(64, activation='tanh', return_sequences=True), input_shape=(self.seq_length, X_train.shape[2])),
+      #    Dropout(0.3),
+      #    Bidirectional(LSTM(128, activation='tanh', return_sequences=False)),
+      #    Dropout(0.5),
+      #    Dense(1)
+      # ])
 
-      # model.add(LSTM(units=50,return_sequences=True,input_shape=(seq_length, X_train.shape[2])))
-      # model.add(Dropout(0.2))
-      # model.add(LSTM(units=50,return_sequences=True))
-      # model.add(Dropout(0.2))
-      # model.add(LSTM(units=50,return_sequences=True))
-      # model.add(Dropout(0.2))
-      # model.add(LSTM(units=50))
-      # model.add(Dropout(0.2))
-      # model.add(Dense(units=1))
+
+      model = Sequential()
+
+      model.add(LSTM(units=50,return_sequences=True,input_shape=(self.seq_length, X_train.shape[2])))
+      model.add(Dropout(0.2))
+      model.add(LSTM(units=50,return_sequences=True))
+      model.add(Dropout(0.2))
+      model.add(LSTM(units=50,return_sequences=True))
+      model.add(Dropout(0.2))
+      model.add(LSTM(units=50))
+      model.add(Dropout(0.2))
+      model.add(Dense(units=1))
 
       optimizer = Adam(learning_rate=0.001)
       model.compile(optimizer=optimizer, loss='mse')
@@ -209,10 +218,9 @@ class ModelTesting():
          y (np array): Original y with correct returns
          prediction (np array): Predicted y by model
       """
-      display_table = pd.DataFrame()
-      display_table["Prev"] = [i[-1][0] for i in x]
+      display_table = pd.DataFrame({"Prev":[i[-1][0] for i in x]})
       display_table["Actual"] = y
-      display_table["Prev"] = x
+      display_table["Prediction"] = prediction
       print(display_table)
       good = 0
       for i in range(len(prediction)):
