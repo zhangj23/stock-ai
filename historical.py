@@ -342,7 +342,7 @@ def determine_best_seq(model_name, ticker_list):
 def main():
    model_name = "drop"
    test_ticker = "TSLA"
-   seq_length = 10
+   seq_length = 30
    
    # ticker_list = ["TSLA", "NVDA", "AAPL", "QQQ", "SPY", "AMZN", "VOO", "GOOGL", "MSFT", "META", "MS", "GS", "VZ", "NFLX", "COST", "PG", "KO", "JNJ"]
    ticker_list = top_100_stocks
@@ -356,7 +356,7 @@ def main():
    # Use this for a stock not in the ticker list
    # train_predictions, test_predictions, test_predictions_scaled = predict_data(X_train_sample, X_scaled, prediction_scaler, ticker)
    # display_accuracy(X_scaled, y_scaled, test_predictions_scaled)
-   
+
    # Use this for a stock in the ticker list
    train_predictions, test_predictions, test_predictions_scaled, validate_predictions = predict_data(X_train_sample, X_test, X_validate_test_ticker, prediction_scaler, model_name, seq_length)
    display_accuracy(X_test, y_test, test_predictions_scaled)

@@ -22,9 +22,10 @@ class StockETL():
       self.train_information = {}
       self.validate_information = {}
       self.test_information = {}
-      # self.train_scalers = {}
-      # self.validate_scalers = {}
+      self.train_scalers = {}
+      self.validate_scalers = {}
       self.test_scalers = {}
+      self.stock_data = {}
       
       for ticker in self.ticker_list:
          self.etl(ticker)
@@ -78,8 +79,10 @@ class StockETL():
       self.prediction_test_scaler = MinMaxScaler()
       self.prediction_test_scaler.fit_transform(self.test_data[["Close"]])
       
+      self.train_scalers[ticker] = self.prediction_train_scaler
+      self.validate_scalers[ticker] = self.prediction_validate_scaler
       self.test_scalers[ticker] = self.prediction_test_scaler
-      
+      self.stock_data[ticker] = self.data
    def store_sequences(self, ticker):
       self.X_train, self.y_train = self.create_sequences(self.train_information[ticker])
       self.X_validate, self.y_validate = self.create_sequences(self.validate_information[ticker])
@@ -203,11 +206,12 @@ class StockModel(StockETL):
       return test_predictions, test_predictions_scaled
    
 
-class ModelTesting():
+class ModelTesting(StockModel):
    def __init__(self, name, batch_size, seq_lengths):
+      super().__init__(name, batch_size)
       self.ticker_list = top_100_stocks
       self.name = name
-      self.stock_model = StockModel(name, batch_size)
+      # self.stock_model = StockModel(name, batch_size)
       self.seq_lengths = seq_lengths
 
    def display_accuracy(self, x, y, prediction):
@@ -254,10 +258,10 @@ class ModelTesting():
       return "Best seq_length: {}\n The average percent: {}%".format(best_seq, max_percent)
    
    def model_accuracy(self, seq_length):
-      self.stock_model.change_seq_length(seq_length)
+      self.change_seq_length(seq_length)
       if not os.path.exists(f"models/{self.name}{seq_length}_model.keras"):
-         X_train, y_train, X_validate, y_validate = self.stock_model.compile_etl()
-         self.stock_model.create_model(X_train, y_train, X_validate, y_validate)
+         X_train, y_train, X_validate, y_validate = self.compile_etl()
+         self.create_model(X_train, y_train, X_validate, y_validate)
       
       total_amount = 0
       total_percent = 0
@@ -277,6 +281,69 @@ class ModelTesting():
       # else:
       #    return None
 
-      self.stock_model.store_sequences(quote)
-      test_predictions, test_predictions_scaled = self.stock_model.predict_data(quote)
-      return self.display_accuracy(self.stock_model.X_test, self.stock_model.y_test, test_predictions_scaled)
+      self.store_sequences(quote)
+      test_predictions, test_predictions_scaled = self.predict_data(quote)
+      return self.display_accuracy(self.X_test, self.y_test, test_predictions_scaled)
+   
+   
+class PlotPredictions(StockModel):
+   def __init__(self, name, batch_size, quote, seq_length):
+      super().__init__(name, batch_size)
+      self.quote = quote
+      self.seq_length = seq_length
+   
+   def predict_data(self):
+      """Predicts 2 different sets of data using a model and 
+      inverses it using the Scaler passed in
+      """
+      model = tf.keras.models.load_model(f"models/{self.name}{self.seq_length}_model.keras")
+      
+      # Make predictions
+      train_predictions = model.predict(self.X_train)
+      validate_predictions = model.predict(self.X_validate)
+      # X_test = self.create_sequences(self.test_information[quote])[0]
+      # print(X_test)
+      # print(X_test.shape)
+      # print(self.seq_length)
+      # print(len(X_test))
+      test_predictions_scaled = model.predict(self.X_test)
+
+      # Inverse transform the predictions
+      self.train_predictions = self.train_scalers[self.quote].inverse_transform(train_predictions)
+      self.validate_predictions = self.validate_scalers[self.quote].inverse_transform(validate_predictions)
+      self.test_predictions = self.test_scalers[self.quote].inverse_transform(test_predictions_scaled)
+   
+   def plot_data(self):
+      self.test_predictions = np.insert(self.test_predictions, 0, [self.validate_predictions[-1]], 0)
+      plt.figure(figsize=(10, 6))
+
+      # Plot actual data
+      plt.plot(self.data.index[self.seq_length:], self.stock_data[self.quote]['Close'][self.seq_length:], label='Actual', color='blue')
+      
+      # plt.plot(data.index[seq_length:], data['RSI'][seq_length:], label='RSI', color='yellow')
+      
+      # plt.plot(data.index[seq_length:], data['MACD_Hist'][seq_length:], label='HIST', color='purple')
+      
+      # Plot training predictions
+      plt.plot(self.data.index[self.seq_length:self.seq_length+len(self.train_predictions)], self.train_predictions, label='Train Predictions',color='green')
+
+      validate_pred_index = range(2*self.seq_length+len(self.train_predictions)-1, 2*self.seq_length+len(self.train_predictions)+len(self.validate_predictions)-1)
+      plt.plot(self.data.index[validate_pred_index], self.validate_predictions, label='Validate Predictions',color='black')
+      
+      # Plot testing predictions
+      test_pred_index = range(3*self.seq_length+len(self.train_predictions)+ len(self.validate_predictions)-1, 3*self.seq_length+len(self.train_predictions)+len(self.test_predictions)+ len(self.validate_predictions)-1)
+      plt.plot(self.data.index[test_pred_index], self.test_predictions, label='Test Predictions',color='orange')
+
+
+      plt.title('Money')
+      plt.xlabel('Year')
+      plt.ylabel(f'{self.quote} stock')
+      plt.show()
+      
+   def run(self):
+      if not os.path.exists(f"models/{self.name}{self.seq_length}_model.keras"):
+         X_train, y_train, X_validate, y_validate = self.compile_etl()
+         self.create_model(X_train, y_train, X_validate, y_validate)
+      self.store_sequences(self.quote)
+      self.predict_data()
+      self.plot_data()
