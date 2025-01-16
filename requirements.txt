@@ -1,0 +1,8 @@
+ta
+tensorflow
+numpy
+pandas
+matplotlib
+scikit-learn
+vaderSentiment
+dotenv
