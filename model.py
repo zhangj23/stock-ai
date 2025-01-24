@@ -9,9 +9,9 @@ from stock_classes import *
 def main():
     choice = input("Which operation do you want to do? (a for accuracy, p for plot): ")
     if choice == "a":
-        name = "drop"
+        name = "no_sentiment"
         
-        testing_object = ModelTesting(name, 64, [5, 10, 20, 30])
+        testing_object = ModelTesting(name, 32, [3, 5, 7, 12])
         print(testing_object.determine_best_seq())
     elif choice == "p":
         name = "drop"

@@ -5,3 +5,4 @@ alpha.txt
 /models
 /final_csv
 /csv
+*.csv

@@ -16,14 +16,16 @@ class StockSentiment:
       
       if os.path.exists(f"csv/{ticker}.csv"):
          self.data = self.read_info()
-         # if pd.Timestamp(self.data.tail(1)["publishedAt"].values[0]).tz_localize(None) < pd.to_datetime(today).tz_localize(None) - pd.tseries.offsets.BDay(1):
-         #    self.merge_new_data()
+         if pd.Timestamp(self.data.tail(1)["publishedAt"].values[0]).tz_localize(None) < pd.to_datetime(today).tz_localize(None) - pd.tseries.offsets.BDay(1):
+            self.merge_new_data()
       else:
+         print("1")
          self.scores = pd.DataFrame()
          return
          self.data = self.write_info()
       
       if self.data.empty:
+         print("2")
          self.scores = pd.DataFrame()
          return
       self.data['trade_day'] = self.data['publishedAt'].apply(self.open_trade)
@@ -77,7 +79,6 @@ class StockSentiment:
          score = average_score * 0.7 + extreme_score * 0.3
          sentiment_scores["Scores"].append(score)
       df = pd.DataFrame(sentiment_scores)
-      print("ok")
       df.to_csv(f"final_csv/{self.ticker}_final.csv", index=False)
       return df
          

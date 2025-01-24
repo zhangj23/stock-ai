@@ -26,6 +26,7 @@ class StockETL():
       self.validate_scalers = {}
       self.test_scalers = {}
       self.stock_data = {}
+      self.rejected = []
       
       for ticker in self.ticker_list:
          self.etl(ticker)
@@ -33,7 +34,7 @@ class StockETL():
    def etl(self, ticker):
       print(ticker)
       stock_info = yfinance.Ticker(ticker)
-      history = stock_info.history(period="10y", interval="1d")
+      history = stock_info.history(period="6mo", interval="1d")
 
       self.data = history["Close"].to_frame()
       self.data["High"] =  history["High"].to_frame()
@@ -47,10 +48,22 @@ class StockETL():
 
       self.data.index = self.data.index.date
       
+      # sentiment_object = StockSentiment(ticker)
+
+      # if sentiment_object.scores.empty:
+      #    print(sentiment_object.scores)
+      #    self.rejected.append(ticker)
+      #    print("bad")
+      #    return None
+      # self.data = self.data.join(sentiment_object.scores, how='left')
+      
+      # self.data.ffill(inplace=True)
+      # self.data.bfill(inplace=True)
+      
       # Create data and store in class
       cap = int(len(self.data))
-      train_size = int(cap * 0.75)
-      validation_cap = int(cap * 0.95)
+      train_size = int(cap * 0.7)
+      validation_cap = int(cap * 0.9)
       
       self.train_data = self.data.iloc[:train_size]
       self.validate_data = self.data.iloc[train_size:validation_cap]
@@ -83,11 +96,14 @@ class StockETL():
       self.validate_scalers[ticker] = self.prediction_validate_scaler
       self.test_scalers[ticker] = self.prediction_test_scaler
       self.stock_data[ticker] = self.data
+      
    def store_sequences(self, ticker):
+      if ticker in self.rejected:
+         return False
       self.X_train, self.y_train = self.create_sequences(self.train_information[ticker])
       self.X_validate, self.y_validate = self.create_sequences(self.validate_information[ticker])
       self.X_test, self.y_test = self.create_sequences(self.test_information[ticker])
-      
+      return True
    def create_sequences(self, data):
       X, y = [], []
       for i in range(len(data) - self.seq_length):
@@ -112,8 +128,8 @@ class StockETL():
       y_validate_list = []
       
       for ticker in self.ticker_list:
-         self.store_sequences(ticker)
-         if self.X_train.size:
+         response = self.store_sequences(ticker)
+         if response:
             X_train_list.append(self.X_train)
             y_train_list.append(self.y_train)
             X_validate_list.append(self.X_validate)
@@ -281,6 +297,8 @@ class ModelTesting(StockModel):
       # else:
       #    return None
 
+      if quote in self.rejected:
+         return None
       self.store_sequences(quote)
       test_predictions, test_predictions_scaled = self.predict_data(quote)
       return self.display_accuracy(self.X_test, self.y_test, test_predictions_scaled)
